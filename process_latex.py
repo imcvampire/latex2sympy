@@ -39,7 +39,7 @@ class MathErrorListener(ErrorListener):
     def syntaxError(self, recog, symbol, line, col, msg, e):
         fmt = "%s\n%s\n%s"
         marker = "~" * col + "^"
-        
+
         if msg.startswith("missing"):
             err = fmt % (msg, self.src, marker)
         elif msg.startswith("no viable"):
@@ -68,7 +68,7 @@ def convert_relation(rel):
     elif rel.LTE():
         return sympy.LessThan(lh, rh)
     elif rel.GT():
-        return sympy.StrictGreaterThan(lh, rh) 
+        return sympy.StrictGreaterThan(lh, rh)
     elif rel.GTE():
         return sympy.GreaterThan(lh, rh)
     elif rel.EQUAL():
@@ -149,8 +149,12 @@ def convert_postfix_list(arr, i=0):
                     # symbol in between is 'x', treat as multiplication.
                     if len(left_syms) == 0 and len(right_syms) == 0 and str(res) == "x":
                         return convert_postfix_list(arr, i + 1)
+
+            next_res = convert_postfix_list(arr, i + 1)
+            if res.is_Number and next_res.is_Number:
+                raise Exception("Not a valid number, expected operator")
             # multiply by next
-            return sympy.Mul(res, convert_postfix_list(arr, i + 1), evaluate=False)
+            return sympy.Mul(res, next_res, evaluate=False)
     else: # must be derivative
         wrt = res[0]
         if i == len(arr) - 1:
@@ -190,7 +194,7 @@ def convert_postfix(postfix):
             at_b = None
             at_a = None
             if ev.eval_at_sup():
-                at_b = do_subs(exp, ev.eval_at_sup()) 
+                at_b = do_subs(exp, ev.eval_at_sup())
             if ev.eval_at_sub():
                 at_a = do_subs(exp, ev.eval_at_sub())
             if at_b != None and at_a != None:
@@ -199,7 +203,7 @@ def convert_postfix(postfix):
                 exp = at_b
             elif at_a != None:
                 exp = at_a
-            
+
     return exp
 
 def convert_exp(exp):
@@ -244,7 +248,7 @@ def convert_atom(atom):
                 subscript = convert_expr(atom.subexpr().expr())
             else:                               # subscript is atom
                 subscript = convert_atom(atom.subexpr().atom())
-            subscriptName = '_{' + StrPrinter().doprint(subscript) + '}'
+            subscriptName = '_' + StrPrinter().doprint(subscript) + ''
         return sympy.Symbol(atom.LETTER().getText() + subscriptName)
     elif atom.SYMBOL():
         s = atom.SYMBOL().getText()[1:]
@@ -258,7 +262,7 @@ def convert_atom(atom):
                 else:                               # subscript is atom
                     subscript = convert_atom(atom.subexpr().atom())
                 subscriptName = StrPrinter().doprint(subscript)
-                s += '_{' + subscriptName + '}'
+                s += '_' + subscriptName + ''
             return sympy.Symbol(s)
     elif atom.NUMBER():
         s = atom.NUMBER().getText().replace(",", "")
@@ -273,7 +277,7 @@ def convert_atom(atom):
 def rule2text(ctx):
     stream = ctx.start.getInputStream()
     # starting index of starting token
-    startIdx = ctx.start.start 
+    startIdx = ctx.start.start
     # stopping index of stopping token
     stopIdx = ctx.stop.stop
 
@@ -327,7 +331,7 @@ def convert_func(func):
             arg = convert_func_arg(func.func_arg())
         else:
             arg = convert_func_arg(func.func_arg_noparens())
-            
+
         name = func.func_normal().start.text[1:]
 
         # change arc<trig> -> a<trig>
@@ -338,10 +342,13 @@ def convert_func(func):
         if name in ["arsinh", "arcosh", "artanh"]:
             name = "a" + name[2:]
             expr = getattr(sympy.functions, name)(arg, evaluate=False)
-            
+
         if (name=="log" or name=="ln"):
             if func.subexpr():
-                base = convert_expr(func.subexpr().expr())
+                if func.subexpr().expr(): # ^{expr}
+                    base = convert_expr(func.subexpr().expr())
+                else: # ^atom
+                    base = convert_atom(func.subexpr().atom())
             elif name == "log":
                 base = 10
             elif name == "ln":
@@ -368,7 +375,7 @@ def convert_func(func):
 
         return expr
     elif func.LETTER() or func.SYMBOL():
-        if func.LETTER(): 
+        if func.LETTER():
             fname = func.LETTER().getText()
         elif func.SYMBOL():
             fname = func.SYMBOL().getText()[1:]
@@ -380,7 +387,7 @@ def convert_func(func):
             else:                                       # subscript is atom
                 subscript = convert_atom(func.subexpr().atom())
             subscriptName = StrPrinter().doprint(subscript)
-            fname += '_{' + subscriptName + '}'
+            fname += '_' + subscriptName + ''
         input_args = func.args()
         output_args = []
         while input_args.args():                        # handle multiple arguments to function
@@ -457,7 +464,7 @@ def handle_sum_or_prod(func, name):
         end = convert_expr(func.supexpr().expr())
     else: # ^atom
         end = convert_atom(func.supexpr().atom())
-        
+
 
     if name == "summation":
         return sympy.Sum(val, (iter_var, start, end))
@@ -478,7 +485,7 @@ def handle_limit(func):
         direction = "+"
     approaching = convert_expr(sub.expr())
     content     = convert_mp(func.mp())
-    
+
     return sympy.Limit(content, var, approaching, direction)
 
 def get_differential_var(d):
